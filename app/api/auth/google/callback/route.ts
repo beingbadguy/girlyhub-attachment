@@ -5,16 +5,23 @@ import { getRefreshToken, saveRefreshToken } from "@/lib/token-store";
 
 export async function GET(request: Request) {
   const url = new URL(request.url);
+  const redirectUri = `${url.origin}/api/auth/google/callback`;
   const code = url.searchParams.get("code");
   const state = url.searchParams.get("state");
   const session = await getSession();
 
-  if (!code || !state || !session.oauthState || state !== session.oauthState) {
-    return new Response("Invalid OAuth state.", { status: 400 });
+  if (!code) {
+    return new Response("Missing authorization code from Google.", { status: 400 });
+  }
+
+  // Only reject if an oauthState was previously stored and does not match the callback state
+  if (session.oauthState && state && session.oauthState !== state) {
+    console.warn("OAuth state mismatch: expected", session.oauthState, "got", state);
+    return new Response("Invalid OAuth state. Please restart authorization.", { status: 400 });
   }
 
   try {
-    const client = getOAuthClient();
+    const client = getOAuthClient(redirectUri);
     const { tokens } = await client.getToken(code);
     const refreshToken = tokens.refresh_token ?? (await getRefreshToken());
 
